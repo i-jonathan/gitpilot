@@ -10,7 +10,7 @@ AI-powered Git assistant for generating commit messages and pull requests.
 - [x] Call Ollama
 - [x] Accept / Retry / Cancel
 - [x] Commit
-- [ ] No staged changes → Add all / Select / Cancel
+- [x] No staged changes → Add all / Select / Cancel
 - [ ] Normalize/validate model output
 - [ ] Better error handling
 - [ ] Tests
