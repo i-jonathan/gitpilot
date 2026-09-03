@@ -90,7 +90,7 @@ func changedFiles(rootDir string) ([]gitFile, error) {
 		}
 
 		files = append(files, gitFile{
-			Status: line[:2],
+			Status: strings.TrimSpace(line[:2]),
 			Path:   line[3:],
 		})
 	}
