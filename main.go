@@ -79,7 +79,7 @@ func loadConfig() (config, error) {
 }
 
 func promptAction() (string, error) {
-	fmt.Println("\n[a]ccept [e]dit [r]etry [c]ancel")
+	fmt.Println("\n[a]ccept [r]etry [c]ancel")
 
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')
@@ -164,10 +164,8 @@ func commitCommand(c config) {
 		case "c", "cancel":
 			fmt.Println("Cancelled.")
 			os.Exit(0)
-		case "e", "edit":
-			// TODO
-			fmt.Println("Unimplemented")
-			os.Exit(0)
+		default:
+			fmt.Println("Please choose a, r, or c.")
 		}
 	}
 }
