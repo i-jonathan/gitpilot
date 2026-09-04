@@ -11,9 +11,9 @@ AI-powered Git assistant for generating commit messages and pull requests.
 - [x] Accept / Retry / Cancel
 - [x] Commit
 - [x] No staged changes → Add all / Select / Cancel
-- [ ] Normalize/validate model output
-- [ ] Better error handling
-- [ ] Tests
+- [x] Normalize/validate model output
+- [x] Better error handling
+- [x] Tests
 - [ ] --verbose
 - [ ] Polish UX
 - [ ] gitpilot pr
