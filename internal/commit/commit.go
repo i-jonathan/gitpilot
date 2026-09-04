@@ -186,8 +186,8 @@ func validate(msg string) error {
 	if msg == "" {
 		return errors.New("commit message is empty")
 	}
-	if len(msg) > 150 {
-		return fmt.Errorf("commit message exceeds 72 characters (%d)", len(msg))
+	if len(msg) > 200 {
+		return fmt.Errorf("commit message exceeds 200 characters (%d)", len(msg))
 	}
 
 	col := strings.Index(msg, ":")
