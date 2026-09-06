@@ -39,6 +39,10 @@ func Root() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
+func (r *Repo) RootDir() string {
+	return r.rootDir
+}
+
 func (r *Repo) HasStagedChanges() (bool, error) {
 	cmd := exec.Command("git", "diff", "--cached", "--quiet")
 	cmd.Dir = r.rootDir
@@ -131,7 +135,7 @@ func (r *Repo) CurrentBranch() (string, error) {
 		return "", fmt.Errorf("get current branch error: %w", err)
 	}
 
-	return string(output), nil
+	return strings.TrimSpace(string(output)), nil
 }
 
 func (r *Repo) DefaultBranch() (string, error) {
@@ -159,7 +163,7 @@ func (r *Repo) DefaultBranch() (string, error) {
 }
 
 func (r *Repo) CommitsSince(base string) (string, error) {
-	cmd := exec.Command("git", "log", "--format=%s", base+"...HEAD")
+	cmd := exec.Command("git", "log", "--format=%s", base+"..HEAD")
 	cmd.Dir = r.rootDir
 
 	output, err := cmd.Output()
@@ -180,4 +184,28 @@ func (r *Repo) DiffSince(base string) (string, error) {
 	}
 
 	return string(output), nil
+}
+
+func (r *Repo) HasRemoteBranch(branch string) (bool, error) {
+	cmd := exec.Command(
+		"git",
+		"ls-remote",
+		"--exit-code",
+		"--heads",
+		"origin",
+		branch,
+	)
+	cmd.Dir = r.rootDir
+
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("check remote branch: %w", err)
 }
