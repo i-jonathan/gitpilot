@@ -122,7 +122,7 @@ func (r *Repo) StageFiles(filePaths []string) error {
 	return nil
 }
 
-func (r *Repo) CurrentBranch(rootDir string) (string, error) {
+func (r *Repo) CurrentBranch() (string, error) {
 	cmd := exec.Command("git", "branch", "--show-current")
 	cmd.Dir = r.rootDir
 
@@ -134,7 +134,7 @@ func (r *Repo) CurrentBranch(rootDir string) (string, error) {
 	return string(output), nil
 }
 
-func (r *Repo) DefaultBranch(rootDir string) (string, error) {
+func (r *Repo) DefaultBranch() (string, error) {
 	cmd := exec.Command("git", "remote", "show", "origin")
 	cmd.Dir = r.rootDir
 
@@ -143,11 +143,11 @@ func (r *Repo) DefaultBranch(rootDir string) (string, error) {
 		return "", fmt.Errorf("get default branch error: %w", err)
 	}
 
-	for _, line := range strings.Split(string(output), "\n") {
+	for line := range strings.SplitSeq(string(output), "\n") {
 		line = strings.TrimSpace(line)
 
-		if strings.HasPrefix(line, "HEAD branch:") {
-			branch := strings.TrimSpace(strings.TrimPrefix(line, "HEAD branch:"))
+		if branch, ok := strings.CutPrefix(line, "HEAD branch:"); ok {
+			branch = strings.TrimSpace(branch)
 
 			if branch != "" {
 				return branch, nil
