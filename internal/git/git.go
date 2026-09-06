@@ -121,3 +121,63 @@ func (r *Repo) StageFiles(filePaths []string) error {
 	}
 	return nil
 }
+
+func (r *Repo) CurrentBranch(rootDir string) (string, error) {
+	cmd := exec.Command("git", "branch", "--show-current")
+	cmd.Dir = r.rootDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get current branch error: %w", err)
+	}
+
+	return string(output), nil
+}
+
+func (r *Repo) DefaultBranch(rootDir string) (string, error) {
+	cmd := exec.Command("git", "remote", "show", "origin")
+	cmd.Dir = r.rootDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get default branch error: %w", err)
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		line = strings.TrimSpace(line)
+
+		if strings.HasPrefix(line, "HEAD branch:") {
+			branch := strings.TrimSpace(strings.TrimPrefix(line, "HEAD branch:"))
+
+			if branch != "" {
+				return branch, nil
+			}
+		}
+	}
+
+	return "", errors.New("could not determine default branch")
+}
+
+func (r *Repo) CommitsSince(base string) (string, error) {
+	cmd := exec.Command("git", "log", "--format=%s", base+"...HEAD")
+	cmd.Dir = r.rootDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get commits since error: %w", err)
+	}
+
+	return string(output), nil
+}
+
+func (r *Repo) DiffSince(base string) (string, error) {
+	cmd := exec.Command("git", "diff", "--no-ext-diff", base+"...HEAD")
+	cmd.Dir = r.rootDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get diff since default error: %w", err)
+	}
+
+	return string(output), nil
+}
