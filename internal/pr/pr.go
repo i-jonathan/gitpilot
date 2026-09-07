@@ -57,6 +57,19 @@ func (e *ParseError) Unwrap() error {
 	return e.Err
 }
 
+func (e *ParseError) PrintFailure() {
+	fmt.Println()
+	fmt.Println("⚠ The model failed to return a structured pull request response.")
+	fmt.Println("The selected model may not reliably support structured output.")
+	fmt.Println()
+	fmt.Println("Raw model response:")
+	fmt.Println("────────────────────────────────────────")
+	fmt.Println(e.Response)
+	fmt.Println("────────────────────────────────────────")
+	fmt.Println()
+	fmt.Println("Try another model or use the response above manually.")
+}
+
 var pullRequestSchema = map[string]any{
 	"type": "object",
 	"properties": map[string]any{
@@ -271,17 +284,4 @@ func createPR(repo *git.Repo, pull PullRequest) (string, error) {
 	}
 
 	return strings.TrimSpace(string(output)), nil
-}
-
-func printParseFailure(err *ParseError) {
-	fmt.Println()
-	fmt.Println("⚠ The model failed to return a structured pull request response.")
-	fmt.Println("The selected model may not reliably support structured output.")
-	fmt.Println()
-	fmt.Println("Raw model response:")
-	fmt.Println("────────────────────────────────────────")
-	fmt.Println(err.Response)
-	fmt.Println("────────────────────────────────────────")
-	fmt.Println()
-	fmt.Println("Try another model or use the response above manually.")
 }
