@@ -18,10 +18,16 @@ type generateRequest struct {
 	Prompt string `json:"prompt"`
 	Stream bool   `json:"stream"`
 	Think  bool   `json:"think"`
+	Format any    `json:"format,omitempty"`
 }
 
 type generateResponse struct {
 	Response string `json:"response"`
+}
+
+type GenerateOptions struct {
+	Think  bool
+	Format any
 }
 
 type Agent struct {
@@ -34,11 +40,16 @@ type Agent struct {
 var ErrEmptyResponse = errors.New("generated commit message is empty")
 
 func (a *Agent) Generate(prompt string) (string, error) {
+	return a.GenerateWithOptions(prompt, GenerateOptions{})
+}
+
+func (a *Agent) GenerateWithOptions(prompt string, opts GenerateOptions) (string, error) {
 	reqBody := generateRequest{
 		Model:  a.Model,
 		Prompt: prompt,
 		Stream: false,
 		Think:  a.Think,
+		Format: opts.Format,
 	}
 
 	body, err := json.Marshal(reqBody)
