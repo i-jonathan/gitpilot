@@ -18,6 +18,58 @@ type PullRequest struct {
 	Description string `json:"description"`
 }
 
+func (p *PullRequest) normalize() error {
+	p.Title = strings.TrimSpace(p.Title)
+	p.Description = strings.TrimSpace(p.Description)
+
+	if p.Title == "" {
+		return errors.New("generated PR title is empty")
+	}
+
+	if p.Description == "" {
+		return errors.New("generated PR description is empty")
+	}
+
+	if len([]rune(p.Title)) > 100 {
+		return errors.New("generated PR title exceeds 100 characters")
+	}
+
+	return nil
+}
+
+func (p *PullRequest) print() {
+	fmt.Println("Pull Request:")
+	fmt.Printf("Title: %s\n\n", p.Title)
+	fmt.Println("Description:")
+	fmt.Println(p.Description)
+}
+
+type ParseError struct {
+	Response string
+	Err      error
+}
+
+func (e *ParseError) Error() string {
+	return fmt.Sprintf("parse pull request response: %v", e.Err)
+}
+
+func (e *ParseError) Unwrap() error {
+	return e.Err
+}
+
+var pullRequestSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"title": map[string]any{
+			"type": "string",
+		},
+		"description": map[string]any{
+			"type": "string",
+		},
+	},
+	"required": []string{"title", "description"},
+}
+
 func Run(repo *git.Repo, agent *agent.Agent) error {
 	err := cli.RequireCommand("gh")
 	if err != nil {
@@ -63,7 +115,7 @@ func Run(repo *git.Repo, agent *agent.Agent) error {
 
 	prompt := buildPrompt(commits, diff)
 
-	pullRequest, err := generate(agent, prompt)
+	pullRequest, err := generateWithRetry(agent, prompt)
 	if err != nil {
 		return err
 	}
@@ -114,72 +166,82 @@ func Run(repo *git.Repo, agent *agent.Agent) error {
 }
 
 func buildPrompt(commits, diff string) string {
-	return fmt.Sprintf(`You are an expert software engineer generating a GitHub pull request.
-		Analyze the commits and code changes below and generate a concise pull request title and description.
+	return fmt.Sprintf(`Generate a GitHub pull request from the commits and code changes below.
 
-		Rules:
-		- Return valid JSON only.
-		- Format:
-		  {
-		    "title": "...",
-		    "description": "..."
-		  }
-		- The title should be concise and describe the overall purpose of the changes.
-		- Use Conventional Commits format for the title when appropriate.
-		- Keep the title concise and under 100 characters.
-		- The description should explain what changed and why.
-		- Use Markdown in the description where helpful.
-		- Do not invent information.
-		- Do not include reasoning outside the JSON.
+	OUTPUT FORMAT:
+	Return exactly one JSON object and nothing else.
 
-		Commits:
-		%s
+	{
+  "title": "pull request title",
+  "description": "pull request description"
+	}
 
-		Diff:
-		%s
-		`,
+	STRICT RULES:
+	- Your response MUST start with {
+	- Your response MUST end with }
+	- Do NOT use Markdown code fences.
+	- Do NOT include explanations, analysis, reasoning, or commentary.
+	- Do NOT include any text before or after the JSON.
+	- The title must be concise and under 100 characters.
+	- Use Conventional Commits format for the title when appropriate.
+	- The description should explain what changed and why.
+	- Use Markdown in the description where helpful.
+	- Do not invent information.
+
+	COMMITS:
+	%s
+
+	CODE CHANGES:
+	%s
+	`,
 		commits, diff,
 	)
 }
 
-func generate(agent *agent.Agent, prompt string) (PullRequest, error) {
-	response, err := agent.Generate(prompt)
+func generate(a *agent.Agent, prompt string) (PullRequest, error) {
+	response, err := a.GenerateWithOptions(prompt, agent.GenerateOptions{
+		Format: pullRequestSchema,
+	})
+
 	if err != nil {
 		return PullRequest{}, fmt.Errorf("generate pull request error: %w", err)
 	}
 
 	var pull PullRequest
 	if err := json.Unmarshal([]byte(response), &pull); err != nil {
-		return PullRequest{}, fmt.Errorf("parse pull request response: %w", err)
+		return PullRequest{}, &ParseError{
+			Response: response,
+			Err:      err,
+		}
 	}
 
 	return pull, nil
 }
 
-func (p *PullRequest) normalize() error {
-	p.Title = strings.TrimSpace(p.Title)
-	p.Description = strings.TrimSpace(p.Description)
-
-	if p.Title == "" {
-		return errors.New("generated PR title is empty")
+func generateWithRetry(agent *agent.Agent, prompt string) (PullRequest, error) {
+	pullRequest, err := generate(agent, prompt)
+	if err == nil {
+		return pullRequest, nil
 	}
 
-	if p.Description == "" {
-		return errors.New("generated PR description is empty")
+	var parseErr *ParseError
+	if !errors.As(err, &parseErr) {
+		return PullRequest{}, err
 	}
 
-	if len([]rune(p.Title)) > 100 {
-		return errors.New("generated PR title exceeds 100 characters")
+	fmt.Println("⚠ Structured response failed. Retrying...")
+
+	pullRequest, retryErr := generate(agent, prompt)
+	if retryErr == nil {
+		return pullRequest, nil
 	}
 
-	return nil
-}
+	var retryParseErr *ParseError
+	if errors.As(retryErr, &retryParseErr) {
+		printParseFailure(retryParseErr)
+	}
 
-func (p *PullRequest) print() {
-	fmt.Println("Pull Request:")
-	fmt.Printf("Title: %s\n\n", p.Title)
-	fmt.Println("Description:")
-	fmt.Println(p.Description)
+	return PullRequest{}, retryErr
 }
 
 func promptAction() (string, error) {
@@ -208,4 +270,17 @@ func createPR(repo *git.Repo, pull PullRequest) (string, error) {
 	}
 
 	return strings.TrimSpace(string(output)), nil
+}
+
+func printParseFailure(err *ParseError) {
+	fmt.Println()
+	fmt.Println("⚠ The model failed to return a structured pull request response.")
+	fmt.Println("The selected model may not reliably support structured output.")
+	fmt.Println()
+	fmt.Println("Raw model response:")
+	fmt.Println("────────────────────────────────────────")
+	fmt.Println(err.Response)
+	fmt.Println("────────────────────────────────────────")
+	fmt.Println()
+	fmt.Println("Try another model or use the response above manually.")
 }
