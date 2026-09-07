@@ -76,6 +76,11 @@ func Run(repo *git.Repo, agent *agent.Agent) error {
 		return err
 	}
 
+	err = cli.RequireGithubAuth()
+	if err != nil {
+		return err
+	}
+
 	current, err := repo.CurrentBranch()
 	if err != nil {
 		return err
