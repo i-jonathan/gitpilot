@@ -120,12 +120,7 @@ func Run(repo *git.Repo, agent *agent.Agent) error {
 
 	prompt := buildPrompt(commits, diff)
 
-	pullRequest, err := generateWithRetry(agent, prompt)
-	if err != nil {
-		return err
-	}
-
-	err = pullRequest.normalize()
+	pullRequest, err := generateValid(agent, prompt)
 	if err != nil {
 		return err
 	}
@@ -149,12 +144,7 @@ func Run(repo *git.Repo, agent *agent.Agent) error {
 			fmt.Println(url)
 			return nil
 		case "r", "retry":
-			pullRequest, err := generate(agent, prompt)
-			if err != nil {
-				return err
-			}
-
-			err = pullRequest.normalize()
+			pullRequest, err := generateValid(agent, prompt)
 			if err != nil {
 				return err
 			}
@@ -223,30 +213,36 @@ func generate(a *agent.Agent, prompt string) (PullRequest, error) {
 	return pull, nil
 }
 
-func generateWithRetry(agent *agent.Agent, prompt string) (PullRequest, error) {
-	pullRequest, err := generate(agent, prompt)
-	if err == nil {
+func generateValid(a *agent.Agent, prompt string) (PullRequest, error) {
+	for attempt := range 2 {
+		pullRequest, err := generate(a, prompt)
+		if err != nil {
+			var parseErr *ParseError
+			if !errors.As(err, &parseErr) {
+				return PullRequest{}, err
+			}
+
+			if attempt == 0 {
+				fmt.Println("⚠ Structured response failed. Retrying...")
+				continue
+			}
+
+			parseErr.PrintFailure()
+			return PullRequest{}, err
+		}
+
+		if err := pullRequest.normalize(); err != nil {
+			if attempt == 0 {
+				fmt.Printf("⚠ Generated PR failed validation: %v. Retrying...\n", err)
+				continue
+			}
+
+			return PullRequest{}, err
+		}
+
 		return pullRequest, nil
 	}
-
-	var parseErr *ParseError
-	if !errors.As(err, &parseErr) {
-		return PullRequest{}, err
-	}
-
-	fmt.Println("⚠ Structured response failed. Retrying...")
-
-	pullRequest, retryErr := generate(agent, prompt)
-	if retryErr == nil {
-		return pullRequest, nil
-	}
-
-	var retryParseErr *ParseError
-	if errors.As(retryErr, &retryParseErr) {
-		printParseFailure(retryParseErr)
-	}
-
-	return PullRequest{}, retryErr
+	panic("unreachable")
 }
 
 func promptAction() (string, error) {
