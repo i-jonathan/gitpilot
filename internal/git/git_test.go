@@ -199,6 +199,154 @@ func TestStagedDiff_Error(t *testing.T) {
 	}
 }
 
+func TestCurrentBranch(t *testing.T) {
+	repo := repoFromTestRepo(t)
+	branch, err := repo.CurrentBranch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if branch != "main" {
+		t.Errorf("CurrentBranch = %q, want %q", branch, "main")
+	}
+}
+
+func TestCommitsSince(t *testing.T) {
+	repo := repoFromTestRepo(t)
+
+	// Create and switch to a feature branch to have a real commit range
+	cmd := exec.Command("git", "-C", repo.rootDir, "checkout", "-b", "feature")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repo.rootDir, "feature.txt"), []byte("feature"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("git", "-C", repo.rootDir, "add", "feature.txt")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("git", "-C", repo.rootDir, "commit", "-m", "feat: add feature")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	commits, err := repo.CommitsSince("main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(commits, "feat: add feature") {
+		t.Errorf("CommitsSince should include 'feat: add feature', got: %s", commits)
+	}
+	if strings.Contains(commits, "initial") {
+		t.Errorf("CommitsSince from main should not include the initial commit, got: %s", commits)
+	}
+}
+
+func TestDiffSince(t *testing.T) {
+	repo := repoFromTestRepo(t)
+
+	// Create and switch to a feature branch to have a real diff range
+	cmd := exec.Command("git", "-C", repo.rootDir, "checkout", "-b", "feature")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(repo.rootDir, "feature.txt"), []byte("new content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("git", "-C", repo.rootDir, "add", "feature.txt")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	cmd = exec.Command("git", "-C", repo.rootDir, "commit", "-m", "feat: add feature")
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	diff, err := repo.DiffSince("main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(diff, "feature.txt") {
+		t.Errorf("DiffSince should mention feature.txt, got: %s", diff[:min(len(diff), 200)])
+	}
+	if !strings.Contains(diff, "new content") {
+		t.Errorf("DiffSince should contain the new content, got: %s", diff[:min(len(diff), 200)])
+	}
+}
+
+func TestRootDir(t *testing.T) {
+	repo := repoFromTestRepo(t)
+	dir := repo.RootDir()
+	if dir == "" {
+		t.Error("RootDir() returned empty string")
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("RootDir() = %q, but directory does not exist: %v", dir, err)
+	}
+}
+
+func TestRoot(t *testing.T) {
+	repo := repoFromTestRepo(t)
+
+	savedDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(savedDir)
+
+	if err := os.Chdir(repo.rootDir); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Root()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// git rev-parse --show-toplevel resolves symlinks, returning the real path.
+	// On macOS, /tmp is a symlink to /private/tmp and /var to /private/var.
+	// Compare by evaluating the trailing portion of the path.
+	if !strings.HasSuffix(got, "TestRoot") && !strings.HasSuffix(repo.rootDir, filepath.Base(string(got))) {
+		t.Errorf("Root() = %q, want suffix matching %q", got, repo.rootDir)
+	}
+	if _, err := os.Stat(got); err != nil {
+		t.Errorf("Root() = %q, but directory does not exist: %v", got, err)
+	}
+}
+
+func TestRoot_NotInGitRepo(t *testing.T) {
+	savedDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(savedDir)
+
+	tmp := t.TempDir()
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = Root()
+	if err == nil {
+		t.Fatal("expected error when not in a git repository")
+	}
+	if !strings.Contains(err.Error(), "not inside a git repository") {
+		t.Errorf("got %q, want 'not inside a git repository'", err)
+	}
+}
+
+func TestHasRemoteBranch_Error(t *testing.T) {
+	repo := NewRepo(t.TempDir())
+	_, err := repo.HasRemoteBranch("main")
+	if err == nil {
+		t.Fatal("expected error in non-git directory")
+	}
+	if !strings.Contains(err.Error(), "check remote branch") {
+		t.Errorf("got %v, want 'check remote branch'", err)
+	}
+}
+
 func TestChangedFiles_Error(t *testing.T) {
 	repo := NewRepo(t.TempDir())
 	_, err := repo.ChangedFiles()
