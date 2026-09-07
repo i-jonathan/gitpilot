@@ -4,15 +4,11 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"gitpilot/internal/agent"
-	"gitpilot/internal/config"
 	"gitpilot/internal/git"
 )
 
@@ -20,18 +16,7 @@ var ErrCancelled = errors.New("cancelled")
 var ErrNoChanges = errors.New("no file changes")
 var errEmptyResponse = errors.New("generated commit message is empty")
 
-func Run(cfg config.Config) error {
-	if err := git.Available(); err != nil {
-		return err
-	}
-
-	rootDir, err := git.Root()
-	if err != nil {
-		return err
-	}
-
-	repo := git.NewRepo(rootDir)
-
+func Run(repo *git.Repo, agt *agent.Agent) error {
 	hasStaged, err := repo.HasStagedChanges()
 	if err != nil {
 		return err
@@ -63,15 +48,6 @@ func Run(cfg config.Config) error {
 	diff, err := repo.StagedDiff()
 	if err != nil {
 		return err
-	}
-
-	agt := agent.Agent{
-		Model:   cfg.Model,
-		BaseURL: cfg.APIURL,
-		Think:   cfg.Thinking,
-		Client: &http.Client{
-			Timeout: 2 * time.Minute,
-		},
 	}
 
 	commitMsg, err := generateCommitMessage(agt, diff)
@@ -108,7 +84,7 @@ func Run(cfg config.Config) error {
 	}
 }
 
-func generateCommitMessage(agt agent.Agent, diff string) (string, error) {
+func generateCommitMessage(agt *agent.Agent, diff string) (string, error) {
 	prompt := buildPrompt(diff)
 
 	raw, err := agt.Generate(prompt)
@@ -121,7 +97,6 @@ func generateCommitMessage(agt agent.Agent, diff string) (string, error) {
 		return "", err
 	}
 
-	log.Println(msg)
 	if err := validate(msg); err != nil {
 		return "", fmt.Errorf("generated message is invalid: %w", err)
 	}

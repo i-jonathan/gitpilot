@@ -14,6 +14,6 @@ AI-powered Git assistant for generating commit messages and pull requests.
 - [x] Normalize/validate model output
 - [x] Better error handling
 - [x] Tests
-- [ ] --verbose
 - [ ] Polish UX
 - [ ] gitpilot pr
+- [ ] --verbose

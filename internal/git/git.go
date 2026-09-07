@@ -39,6 +39,10 @@ func Root() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
+func (r *Repo) RootDir() string {
+	return r.rootDir
+}
+
 func (r *Repo) HasStagedChanges() (bool, error) {
 	cmd := exec.Command("git", "diff", "--cached", "--quiet")
 	cmd.Dir = r.rootDir
@@ -120,4 +124,88 @@ func (r *Repo) StageFiles(filePaths []string) error {
 		return fmt.Errorf("stage selected files: %w", err)
 	}
 	return nil
+}
+
+func (r *Repo) CurrentBranch() (string, error) {
+	cmd := exec.Command("git", "branch", "--show-current")
+	cmd.Dir = r.rootDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get current branch error: %w", err)
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+func (r *Repo) DefaultBranch() (string, error) {
+	cmd := exec.Command("git", "remote", "show", "origin")
+	cmd.Dir = r.rootDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get default branch error: %w", err)
+	}
+
+	for line := range strings.SplitSeq(string(output), "\n") {
+		line = strings.TrimSpace(line)
+
+		if branch, ok := strings.CutPrefix(line, "HEAD branch:"); ok {
+			branch = strings.TrimSpace(branch)
+
+			if branch != "" {
+				return branch, nil
+			}
+		}
+	}
+
+	return "", errors.New("could not determine default branch")
+}
+
+func (r *Repo) CommitsSince(base string) (string, error) {
+	cmd := exec.Command("git", "log", "--format=%s", base+"..HEAD")
+	cmd.Dir = r.rootDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get commits since error: %w", err)
+	}
+
+	return string(output), nil
+}
+
+func (r *Repo) DiffSince(base string) (string, error) {
+	cmd := exec.Command("git", "diff", "--no-ext-diff", base+"...HEAD")
+	cmd.Dir = r.rootDir
+
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("get diff since default error: %w", err)
+	}
+
+	return string(output), nil
+}
+
+func (r *Repo) HasRemoteBranch(branch string) (bool, error) {
+	cmd := exec.Command(
+		"git",
+		"ls-remote",
+		"--exit-code",
+		"--heads",
+		"origin",
+		branch,
+	)
+	cmd.Dir = r.rootDir
+
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 2 {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("check remote branch: %w", err)
 }
