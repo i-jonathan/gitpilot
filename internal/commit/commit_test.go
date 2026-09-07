@@ -1,9 +1,14 @@
 package commit
 
 import (
+	"encoding/json"
 	"errors"
+	"gitpilot/internal/agent"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNormalize(t *testing.T) {
@@ -85,14 +90,14 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func TestValidate_Over72(t *testing.T) {
-	long := "feat: " + strings.Repeat("a", 67)
+func TestValidate_Over200(t *testing.T) {
+	long := "feat: " + strings.Repeat("a", 195)
 	err := validate(long)
 	if err == nil {
-		t.Fatal("expected error for 73-char message")
+		t.Fatal("expected error for 201-char message")
 	}
-	if !strings.Contains(err.Error(), "72") {
-		t.Errorf("got %v, want error mentioning 72", err)
+	if !strings.Contains(err.Error(), "exceeds 200") {
+		t.Errorf("got %v, want error mentioning exceeds 200", err)
 	}
 }
 
@@ -159,5 +164,72 @@ func TestNormalizeAndValidateFlow_FullSanitization(t *testing.T) {
 	}
 	if msg != "feat(core): improve performance" {
 		t.Errorf("got %q, want %q", msg, "feat(core): improve performance")
+	}
+}
+
+func TestGenerateCommitMessage_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/generate" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("unexpected method: %s", r.Method)
+		}
+		resp := map[string]string{
+			"response": "feat(cli): add user login",
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	agt := &agent.Agent{
+		Model:   "test-model",
+		BaseURL: srv.URL,
+		Client:  &http.Client{Timeout: 5 * time.Second},
+	}
+
+	msg, err := generateCommitMessage(agt, "diff --git a/main.go b/main.go\n+func main() {}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg != "feat(cli): add user login" {
+		t.Errorf("got %q, want %q", msg, "feat(cli): add user login")
+	}
+}
+
+func TestGenerateCommitMessage_AgentError(t *testing.T) {
+	agt := &agent.Agent{
+		Model:   "test-model",
+		BaseURL: "http://127.0.0.1:1",
+		Client:  &http.Client{Timeout: 100 * time.Millisecond},
+	}
+
+	_, err := generateCommitMessage(agt, "diff")
+	if err == nil {
+		t.Fatal("expected error from agent")
+	}
+}
+
+func TestGenerateCommitMessage_InvalidMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]string{
+			"response": "not a conventional commit message",
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	agt := &agent.Agent{
+		Model:   "test-model",
+		BaseURL: srv.URL,
+		Client:  &http.Client{Timeout: 5 * time.Second},
+	}
+
+	_, err := generateCommitMessage(agt, "diff")
+	if err == nil {
+		t.Fatal("expected validation error for non-conventional commit message")
+	}
+	if !strings.Contains(err.Error(), "generated message is invalid") {
+		t.Errorf("got %q, want 'generated message is invalid'", err)
 	}
 }
